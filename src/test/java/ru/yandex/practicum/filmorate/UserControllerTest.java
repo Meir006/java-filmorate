@@ -33,7 +33,7 @@ class UserControllerTest {
         assertNotNull(createdUser);
         assertEquals(1, createdUser.getId());
         assertEquals("user_login", createdUser.getLogin());
-        
+
         Collection<User> users = userController.getUsers();
         assertEquals(1, users.size());
     }

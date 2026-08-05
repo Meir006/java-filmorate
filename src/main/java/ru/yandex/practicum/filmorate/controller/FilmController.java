@@ -68,7 +68,7 @@ public class FilmController {
         }
     }
 
-    private synchronized Long getNextId() {
+    private Long getNextId() {
         return ++idCounter;
     }
 }

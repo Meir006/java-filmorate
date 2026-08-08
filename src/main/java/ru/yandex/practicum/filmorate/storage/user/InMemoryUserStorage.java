@@ -80,7 +80,7 @@ public class InMemoryUserStorage implements UserStorage {
         }
     }
 
-    private synchronized Long getNextId() {
+    private Long getNextId() {
         return ++idCounter;
     }
 }

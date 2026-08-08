@@ -26,12 +26,9 @@ public class InMemoryUserStorage implements UserStorage {
     @Override
     public User createUser(User user) {
         log.info("Регистрируем нового пользователя с логином: {}", user.getLogin());
-
         validateUser(user);
-
         user.setId(getNextId());
         users.put(user.getId(), user);
-
         log.info("Пользователь {} (ID {}) успешно создан", user.getLogin(), user.getId());
         return user;
     }
@@ -39,21 +36,16 @@ public class InMemoryUserStorage implements UserStorage {
     @Override
     public User updateUser(User newUser) {
         log.info("Обновляем профиль пользователя с ID {}", newUser.getId());
-
         if (newUser.getId() == null) {
-            log.warn("Не удалось обновить пользователя: не передан ID");
+            log.error("Не удалось обновить пользователя: не передан ID");
             throw new ValidationException("Для обновления профиля необходимо указать ID пользователя");
         }
-
         if (!users.containsKey(newUser.getId())) {
-            log.warn("Пользователь с ID {} не зарегистрирован", newUser.getId());
+            log.error("Пользователь с ID {} не зарегистрирован", newUser.getId());
             throw new NotFoundException("Пользователь с ID " + newUser.getId() + " не найден");
         }
-
         validateUser(newUser);
-
         users.put(newUser.getId(), newUser);
-
         log.info("Профиль пользователя с ID {} успешно обновлён", newUser.getId());
         return newUser;
     }
@@ -62,7 +54,7 @@ public class InMemoryUserStorage implements UserStorage {
     public User getUserById(Long id) {
         User user = users.get(id);
         if (user == null) {
-            log.warn("Пользователь с ID {} не зарегистрирован", id);
+            log.error("Пользователь с ID {} не зарегистрирован", id);
             throw new NotFoundException("Пользователь с ID " + id + " не найден");
         }
         return user;
@@ -70,10 +62,9 @@ public class InMemoryUserStorage implements UserStorage {
 
     private void validateUser(User user) {
         if (user.getLogin() != null && user.getLogin().contains(" ")) {
-            log.warn("В логине «{}» обнаружены пробелы", user.getLogin());
+            log.error("В логине «{}» обнаружены пробелы", user.getLogin());
             throw new ValidationException("Логин должен быть слитным, без пробелов");
         }
-
         if (user.getName() == null || user.getName().isBlank()) {
             user.setName(user.getLogin());
             log.info("Имя не указано — подставили логин «{}» в качестве имени", user.getLogin());

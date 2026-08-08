@@ -77,7 +77,7 @@ public class InMemoryFilmStorage implements FilmStorage {
         }
     }
 
-    private synchronized Long getNextId() {
+    private Long getNextId() {
         return ++idCounter;
     }
 }

@@ -3,75 +3,60 @@ package ru.yandex.practicum.filmorate.controller;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.service.UserService;
 
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
 @Slf4j
 @RestController
 @RequestMapping("/users")
 public class UserController {
 
-    private final Map<Long, User> users = new HashMap<>();
-    private long idCounter = 0;
+    private final UserService userService;
+
+    public UserController(UserService userService) {
+        this.userService = userService;
+    }
 
     @GetMapping
     public Collection<User> getUsers() {
-        log.info("Запрошен список всех пользователей. Всего зарегистрировано: {}", users.size());
-        return users.values();
+        return userService.getUsers();
+    }
+
+    @GetMapping("/{id}")
+    public User getUserById(@PathVariable Long id) {
+        return userService.getUserById(id);
     }
 
     @PostMapping
     public User createUser(@Valid @RequestBody User user) {
-        log.info("Регистрируем нового пользователя с логином: {}", user.getLogin());
-
-        validateUser(user);
-
-        user.setId(getNextId());
-        users.put(user.getId(), user);
-
-        log.info("Пользователь {} (ID {}) успешно создан", user.getLogin(), user.getId());
-        return user;
+        return userService.createUser(user);
     }
 
     @PutMapping
     public User updateUser(@Valid @RequestBody User newUser) {
-        log.info("Обновляем профиль пользователя с ID {}", newUser.getId());
-
-        if (newUser.getId() == null) {
-            log.warn("Не удалось обновить пользователя: не передан ID");
-            throw new ValidationException("Для обновления профиля необходимо указать ID пользователя");
-        }
-
-        if (!users.containsKey(newUser.getId())) {
-            log.warn("Пользователь с ID {} не зарегистрирован", newUser.getId());
-            throw new ValidationException("Пользователь с ID " + newUser.getId() + " не найден");
-        }
-
-        validateUser(newUser);
-
-        users.put(newUser.getId(), newUser);
-
-        log.info("Профиль пользователя с ID {} успешно обновлён", newUser.getId());
-        return newUser;
+        return userService.updateUser(newUser);
     }
 
-    private void validateUser(User user) {
-        if (user.getLogin() != null && user.getLogin().contains(" ")) {
-            log.warn("В логине «{}» обнаружены пробелы", user.getLogin());
-            throw new ValidationException("Логин должен быть слитным, без пробелов");
-        }
-
-        if (user.getName() == null || user.getName().isBlank()) {
-            user.setName(user.getLogin());
-            log.info("Имя не указано — подставили логин «{}» в качестве имени", user.getLogin());
-        }
+    @PutMapping("/{id}/friends/{friendId}")
+    public void addFriend(@PathVariable Long id, @PathVariable Long friendId) {
+        userService.addFriend(id, friendId);
     }
 
-    private synchronized Long getNextId() {
-        return ++idCounter;
+    @DeleteMapping("/{id}/friends/{friendId}")
+    public void removeFriend(@PathVariable Long id, @PathVariable Long friendId) {
+        userService.removeFriend(id, friendId);
+    }
+
+    @GetMapping("/{id}/friends")
+    public List<User> getFriends(@PathVariable Long id) {
+        return userService.getFriends(id);
+    }
+
+    @GetMapping("/{id}/friends/common/{otherId}")
+    public List<User> getCommonFriends(@PathVariable Long id, @PathVariable Long otherId) {
+        return userService.getCommonFriends(id, otherId);
     }
 }

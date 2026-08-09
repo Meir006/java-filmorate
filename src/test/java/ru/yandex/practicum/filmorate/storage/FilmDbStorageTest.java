@@ -7,7 +7,6 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
-import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.model.Genre;
 import ru.yandex.practicum.filmorate.model.Mpa;
@@ -73,13 +72,6 @@ class FilmDbStorageTest {
         assertThat(created.getGenres()).extracting(Genre::getId).containsExactly(1, 2);
     }
 
-    @Test
-    void addFilmWithUnknownMpaShouldThrowValidationException() {
-        Film film = newFilm("Фильм с неизвестным рейтингом");
-        film.setMpa(new Mpa(999, null));
-
-        assertThrows(ValidationException.class, () -> filmStorage.addFilm(film));
-    }
 
     @Test
     void getFilmByIdShouldReturnSavedFilm() {
@@ -149,5 +141,21 @@ class FilmDbStorageTest {
 
         List<Film> popular = filmStorage.getPopular(10);
         assertThat(popular).extracting(Film::getId).contains(film.getId());
+    }
+
+    @Test
+    void addFilmWithUnknownMpaShouldThrowNotFoundException() {
+        Film film = newFilm("Фильм с неизвестным рейтингом");
+        film.setMpa(new Mpa(999, null));
+
+        assertThrows(NotFoundException.class, () -> filmStorage.addFilm(film));
+    }
+
+    @Test
+    void addFilmWithUnknownGenreShouldThrowNotFoundException() {
+        Film film = newFilm("Фильм с неизвестным жанром");
+        film.setGenres(new LinkedHashSet<>(Set.of(new Genre(999, null))));
+
+        assertThrows(NotFoundException.class, () -> filmStorage.addFilm(film));
     }
 }

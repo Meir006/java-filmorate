@@ -57,27 +57,24 @@ public class FilmDbStorage implements FilmStorage {
     @Override
     public Film addFilm(Film film) {
         validateReleaseDate(film);
+        validateMpaExists(film.getMpa());
+        validateGenresExist(film.getGenres());
         log.info("Добавляем новый фильм: {}", film.getName());
         String sql = "INSERT INTO films (name, description, release_date, duration, mpa_id) VALUES (?, ?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
-        try {
-            jdbcTemplate.update(connection -> {
-                PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-                ps.setString(1, film.getName());
-                ps.setString(2, film.getDescription());
-                ps.setDate(3, film.getReleaseDate() == null ? null : Date.valueOf(film.getReleaseDate()));
-                ps.setInt(4, film.getDuration());
-                if (film.getMpa() != null && film.getMpa().getId() != null) {
-                    ps.setInt(5, film.getMpa().getId());
-                } else {
-                    ps.setNull(5, java.sql.Types.INTEGER);
-                }
-                return ps;
-            }, keyHolder);
-        } catch (DataIntegrityViolationException e) {
-            log.error("Не удалось добавить фильм: указан несуществующий рейтинг MPA");
-            throw new ValidationException("Указан несуществующий рейтинг MPA");
-        }
+        jdbcTemplate.update(connection -> {
+            PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            ps.setString(1, film.getName());
+            ps.setString(2, film.getDescription());
+            ps.setDate(3, film.getReleaseDate() == null ? null : Date.valueOf(film.getReleaseDate()));
+            ps.setInt(4, film.getDuration());
+            if (film.getMpa() != null && film.getMpa().getId() != null) {
+                ps.setInt(5, film.getMpa().getId());
+            } else {
+                ps.setNull(5, java.sql.Types.INTEGER);
+            }
+            return ps;
+        }, keyHolder);
         Number key = keyHolder.getKey();
         film.setId(key.longValue());
         saveGenres(film);
@@ -93,20 +90,17 @@ public class FilmDbStorage implements FilmStorage {
         }
         getFilmById(newFilm.getId());
         validateReleaseDate(newFilm);
+        validateMpaExists(newFilm.getMpa());
+        validateGenresExist(newFilm.getGenres());
         log.info("Обновляем данные фильма с ID {}", newFilm.getId());
         String sql = "UPDATE films SET name = ?, description = ?, release_date = ?, duration = ?, mpa_id = ? WHERE film_id = ?";
-        try {
-            jdbcTemplate.update(sql,
-                    newFilm.getName(),
-                    newFilm.getDescription(),
-                    newFilm.getReleaseDate() == null ? null : Date.valueOf(newFilm.getReleaseDate()),
-                    newFilm.getDuration(),
-                    newFilm.getMpa() == null ? null : newFilm.getMpa().getId(),
-                    newFilm.getId());
-        } catch (DataIntegrityViolationException e) {
-            log.error("Не удалось обновить фильм: указан несуществующий рейтинг MPA");
-            throw new ValidationException("Указан несуществующий рейтинг MPA");
-        }
+        jdbcTemplate.update(sql,
+                newFilm.getName(),
+                newFilm.getDescription(),
+                newFilm.getReleaseDate() == null ? null : Date.valueOf(newFilm.getReleaseDate()),
+                newFilm.getDuration(),
+                newFilm.getMpa() == null ? null : newFilm.getMpa().getId(),
+                newFilm.getId());
         jdbcTemplate.update("DELETE FROM film_genres WHERE film_id = ?", newFilm.getId());
         saveGenres(newFilm);
         log.info("Данные фильма «{}» (ID {}) успешно обновлены", newFilm.getName(), newFilm.getId());
@@ -165,14 +159,35 @@ public class FilmDbStorage implements FilmStorage {
             uniqueGenreIds.add(genre.getId());
         }
         String sql = "INSERT INTO film_genres (film_id, genre_id) VALUES (?, ?)";
-        try {
-            jdbcTemplate.batchUpdate(sql, uniqueGenreIds, uniqueGenreIds.size(), (ps, genreId) -> {
-                ps.setLong(1, film.getId());
-                ps.setInt(2, genreId);
-            });
-        } catch (DataIntegrityViolationException e) {
-            log.error("Не удалось сохранить жанры фильма {}: указан несуществующий жанр", film.getId());
-            throw new ValidationException("Указан несуществующий жанр фильма");
+        jdbcTemplate.batchUpdate(sql, uniqueGenreIds, uniqueGenreIds.size(), (ps, genreId) -> {
+            ps.setLong(1, film.getId());
+            ps.setInt(2, genreId);
+        });
+    }
+
+    private void validateMpaExists(Mpa mpa) {
+        if (mpa == null || mpa.getId() == null) {
+            return;
+        }
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mpa_ratings WHERE mpa_id = ?", Integer.class, mpa.getId());
+        if (count == null || count == 0) {
+            log.error("Указан несуществующий рейтинг MPA с ID {}", mpa.getId());
+            throw new NotFoundException("Рейтинг MPA с ID " + mpa.getId() + " не найден");
+        }
+    }
+
+    private void validateGenresExist(Set<Genre> genres) {
+        if (genres == null || genres.isEmpty()) {
+            return;
+        }
+        for (Genre genre : genres) {
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM genres WHERE genre_id = ?", Integer.class, genre.getId());
+            if (count == null || count == 0) {
+                log.error("Указан несуществующий жанр с ID {}", genre.getId());
+                throw new NotFoundException("Жанр с ID " + genre.getId() + " не найден");
+            }
         }
     }
 

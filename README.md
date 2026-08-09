@@ -1,52 +1,160 @@
 # java-filmorate
 
-Filmorate — приложение для тех, кто любит кино. Здесь можно оценивать фильмы, добавлять друзей и смотреть, что сейчас в топе у всех.
+Backend-приложение для сервиса Filmorate: пользователи ставят лайки фильмам, добавляют друг друга в друзья
+и получают подборку самых популярных фильмов. Данные хранятся в базе H2 (JDBC/Spring Boot).
 
-## Как устроена база данных
+## Стек
 
-![ER Diagram](ER-DIAGRAM.png)
+- Java 21, Spring Boot 3.5
+- Spring Web, Spring Validation
+- Spring JDBC (`JdbcTemplate`) + H2
+- Lombok, Logbook (логирование HTTP-запросов)
+- JUnit 5, Spring `@JdbcTest` для интеграционных тестов DAO
 
-Если коротко: в центре всего — фильмы и пользователи. У каждого фильма есть один возрастной рейтинг (G, PG, PG-13, R или NC-17), поэтому его храним прямо в таблице с фильмами. А вот с жанрами так не получится — у одного фильма их может быть сразу несколько, поэтому пришлось сделать отдельную табличку, которая просто связывает фильм и жанр парами. Лайки устроены так же — просто список пар «кто лайкнул что».
+## Схема базы данных (ER-диаграмма)
 
-С друзьями чуть интереснее: дружба не появляется сразу, сначала кто-то отправляет запрос, а потом его подтверждают. Поэтому кроме самой связи между двумя пользователями храним ещё и статус — подтверждена дружба или нет.
+```mermaid
+erDiagram
+    users {
+        bigint user_id PK
+        varchar email UK
+        varchar login UK
+        varchar name
+        date birthday
+    }
 
-## Примеры запросов
+    mpa_ratings {
+        int mpa_id PK
+        varchar name
+    }
 
-Все фильмы вместе с их рейтингом:
-```sql
-SELECT f.*, m.name AS mpa_name
-FROM films f
-JOIN mpa_ratings m ON f.mpa_id = m.mpa_id;
+    films {
+        bigint film_id PK
+        varchar name
+        varchar description
+        date release_date
+        int duration
+        int mpa_id FK
+    }
+
+    genres {
+        int genre_id PK
+        varchar name
+    }
+
+    film_genres {
+        bigint film_id PK,FK
+        int genre_id PK,FK
+    }
+
+    likes {
+        bigint film_id PK,FK
+        bigint user_id PK,FK
+    }
+
+    friendship_status {
+        int status_id PK
+        varchar name
+    }
+
+    friendships {
+        bigint user_id PK,FK
+        bigint friend_id PK,FK
+        int status_id FK
+    }
+
+    films ||--o{ film_genres : ""
+    genres ||--o{ film_genres : ""
+    mpa_ratings ||--o{ films : ""
+    films ||--o{ likes : ""
+    users ||--o{ likes : ""
+    users ||--o{ friendships : "user_id"
+    users ||--o{ friendships : "friend_id"
+    friendship_status ||--o{ friendships : ""
 ```
 
-Топ-10 фильмов по количеству лайков:
+Дружба в `friendships` **односторонняя**: строка `(user_id, friend_id)` означает, что `user_id` добавил
+`friend_id` к себе в друзья. Обратная запись не создаётся автоматически. Таблица `friendship_status`
+хранит справочник статусов (сейчас используется единственный статус `CONFIRMED`, так как заявка
+применяется сразу) и оставлена расширяемой на будущее (например, для запроса дружбы `REQUESTED`).
+
+## Примеры SQL-запросов
+
+**Список фильмов с их рейтингом и жанрами**
+```sql
+SELECT f.film_id, f.name, m.name AS mpa_name, g.name AS genre_name
+FROM films f
+LEFT JOIN mpa_ratings m ON f.mpa_id = m.mpa_id
+LEFT JOIN film_genres fg ON f.film_id = fg.film_id
+LEFT JOIN genres g ON fg.genre_id = g.genre_id
+ORDER BY f.film_id;
+```
+
+**Топ-N популярных фильмов по количеству лайков**
 ```sql
 SELECT f.film_id, f.name, COUNT(l.user_id) AS likes_count
 FROM films f
 LEFT JOIN likes l ON f.film_id = l.film_id
-GROUP BY f.film_id
+GROUP BY f.film_id, f.name
 ORDER BY likes_count DESC
 LIMIT 10;
 ```
 
-Друзья пользователя (только те, кто подтвердил дружбу):
+**Список друзей пользователя**
 ```sql
 SELECT u.*
-FROM friendships fr
-JOIN users u ON u.user_id = fr.friend_id
-JOIN friendship_status fs ON fs.status_id = fr.status_id
-WHERE fr.user_id = ? AND fs.name = 'confirmed';
+FROM users u
+JOIN friendships f ON u.user_id = f.friend_id
+WHERE f.user_id = ?;
 ```
 
-Общие друзья двух пользователей:
+**Общие друзья двух пользователей**
 ```sql
 SELECT u.*
-FROM friendships fr1
-JOIN friendships fr2 ON fr1.friend_id = fr2.friend_id
-JOIN users u ON u.user_id = fr1.friend_id
-WHERE fr1.user_id = ? AND fr2.user_id = ?;
+FROM users u
+JOIN friendships f1 ON u.user_id = f1.friend_id AND f1.user_id = ?
+JOIN friendships f2 ON u.user_id = f2.friend_id AND f2.user_id = ?;
 ```
 
-## Стек
+## Эндпоинты
 
-Java 21, Spring Boot, Maven, Lombok. Запросы логируются через Logbook.
+| Метод | Путь | Описание |
+|---|---|---|
+| GET | `/films` | список всех фильмов |
+| GET | `/films/{id}` | фильм по id |
+| POST | `/films` | добавить фильм |
+| PUT | `/films` | обновить фильм |
+| PUT | `/films/{id}/like/{userId}` | поставить лайк |
+| DELETE | `/films/{id}/like/{userId}` | убрать лайк |
+| GET | `/films/popular?count=N` | N самых популярных фильмов |
+| GET | `/users` | список всех пользователей |
+| GET | `/users/{id}` | пользователь по id |
+| POST | `/users` | зарегистрировать пользователя |
+| PUT | `/users` | обновить пользователя |
+| PUT | `/users/{id}/friends/{friendId}` | добавить в друзья (односторонне) |
+| DELETE | `/users/{id}/friends/{friendId}` | удалить из друзей |
+| GET | `/users/{id}/friends` | список друзей пользователя |
+| GET | `/users/{id}/friends/common/{otherId}` | общие друзья |
+| GET | `/genres` | список жанров |
+| GET | `/genres/{id}` | жанр по id |
+| GET | `/mpa` | список рейтингов MPA |
+| GET | `/mpa/{id}` | рейтинг MPA по id |
+
+## Запуск
+
+```bash
+mvn spring-boot:run
+```
+
+Файл базы данных создаётся автоматически в `./db/filmorate.mv.db` при первом запуске и сохраняется
+между перезапусками приложения. Схема (`schema.sql`) и справочные данные (`data.sql`, жанры и рейтинги
+MPA) применяются автоматически при каждом старте.
+
+## Тесты
+
+```bash
+mvn test
+```
+
+Интеграционные тесты DAO-слоя (`src/test/.../storage`) поднимают приложение через `@JdbcTest` +
+`@AutoConfigureTestDatabase` на резидентной (in-memory) базе H2, независимой от рабочей файловой базы.

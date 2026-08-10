@@ -37,26 +37,16 @@ CREATE TABLE IF NOT EXISTS likes (
     PRIMARY KEY (film_id, user_id)
 );
 
--- Справочник статусов дружбы. Сейчас используется единственное значение
--- CONFIRMED, так как заявка в друзья применяется сразу и без подтверждения
--- (дружба односторонняя — см. friendships). Таблица оставлена по ER-схеме
--- для расширяемости (например, REQUESTED, если в будущем понадобится
--- подтверждение дружбы).
-CREATE TABLE IF NOT EXISTS friendship_status (
-    status_id INT PRIMARY KEY,
-    name VARCHAR(20) NOT NULL
-);
-
 -- Дружба односторонняя: строка (user_id, friend_id) означает,
 -- что user_id добавил friend_id к себе в друзья. Взаимность не создаётся автоматически.
+-- Наличие строки само по себе означает, что дружба существует — отдельного статуса
+-- (подтверждена/не подтверждена) не требуется, подтверждение дружбы не предусмотрено.
 CREATE TABLE IF NOT EXISTS friendships (
     user_id BIGINT NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
     friend_id BIGINT NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
-    status_id INT NOT NULL REFERENCES friendship_status (status_id),
     PRIMARY KEY (user_id, friend_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_film_genres_genre_id ON film_genres (genre_id);
 CREATE INDEX IF NOT EXISTS idx_likes_user_id ON likes (user_id);
 CREATE INDEX IF NOT EXISTS idx_friendships_friend_id ON friendships (friend_id);
-CREATE INDEX IF NOT EXISTS idx_friendships_status_id ON friendships (status_id);

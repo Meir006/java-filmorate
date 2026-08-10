@@ -13,6 +13,3 @@ MERGE INTO genres (genre_id, name) VALUES (3, 'Мультфильм');
 MERGE INTO genres (genre_id, name) VALUES (4, 'Триллер');
 MERGE INTO genres (genre_id, name) VALUES (5, 'Документальный');
 MERGE INTO genres (genre_id, name) VALUES (6, 'Боевик');
-
-MERGE INTO friendship_status (status_id, name) VALUES (1, 'CONFIRMED');
-MERGE INTO friendship_status (status_id, name) VALUES (2, 'REQUESTED');

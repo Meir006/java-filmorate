@@ -1,7 +1,6 @@
 package ru.yandex.practicum.filmorate.storage.user;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -13,6 +12,8 @@ import ru.yandex.practicum.filmorate.model.User;
 
 import java.sql.Date;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collection;
 import java.util.List;
@@ -21,12 +22,27 @@ import java.util.List;
  * DAO-хранилище пользователей поверх H2 (JdbcTemplate).
  */
 @Slf4j
-@Component("userDbStorage")
-@Qualifier("userDbStorage")
+@Component
 public class UserDbStorage implements UserStorage {
 
-    // Дружба применяется сразу, без подтверждения — единственный используемый статус.
-    private static final int CONFIRMED_STATUS_ID = 1;
+    private static final String SELECT_ALL_USERS = "SELECT user_id, email, login, name, birthday FROM users";
+    private static final String SELECT_USER_BY_ID = SELECT_ALL_USERS + " WHERE user_id = ?";
+    private static final String INSERT_USER = "INSERT INTO users (email, login, name, birthday) VALUES (?, ?, ?, ?)";
+    private static final String UPDATE_USER =
+            "UPDATE users SET email = ?, login = ?, name = ?, birthday = ? WHERE user_id = ?";
+    // Наличие строки (user_id, friend_id) само по себе означает, что дружба существует —
+    // отдельный статус не нужен: подтверждение дружбы в проекте не предусмотрено.
+    private static final String MERGE_FRIENDSHIP = "MERGE INTO friendships (user_id, friend_id) VALUES (?, ?)";
+    private static final String DELETE_FRIENDSHIP = "DELETE FROM friendships WHERE user_id = ? AND friend_id = ?";
+    private static final String SELECT_FRIENDS =
+            "SELECT u.user_id, u.email, u.login, u.name, u.birthday " +
+                    "FROM users u JOIN friendships f ON u.user_id = f.friend_id " +
+                    "WHERE f.user_id = ?";
+    private static final String SELECT_COMMON_FRIENDS =
+            "SELECT u.user_id, u.email, u.login, u.name, u.birthday " +
+                    "FROM users u " +
+                    "JOIN friendships f1 ON u.user_id = f1.friend_id AND f1.user_id = ? " +
+                    "JOIN friendships f2 ON u.user_id = f2.friend_id AND f2.user_id = ?";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -36,19 +52,17 @@ public class UserDbStorage implements UserStorage {
 
     @Override
     public Collection<User> getUsers() {
-        String sql = "SELECT user_id, email, login, name, birthday FROM users";
         log.info("Запрошен список всех пользователей");
-        return jdbcTemplate.query(sql, this::mapRowToUser);
+        return jdbcTemplate.query(SELECT_ALL_USERS, this::mapRowToUser);
     }
 
     @Override
     public User createUser(User user) {
         validateUser(user);
         log.info("Регистрируем нового пользователя с логином: {}", user.getLogin());
-        String sql = "INSERT INTO users (email, login, name, birthday) VALUES (?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            PreparedStatement ps = connection.prepareStatement(INSERT_USER, Statement.RETURN_GENERATED_KEYS);
             ps.setString(1, user.getEmail());
             ps.setString(2, user.getLogin());
             ps.setString(3, user.getName());
@@ -70,8 +84,7 @@ public class UserDbStorage implements UserStorage {
         getUserById(newUser.getId());
         validateUser(newUser);
         log.info("Обновляем профиль пользователя с ID {}", newUser.getId());
-        String sql = "UPDATE users SET email = ?, login = ?, name = ?, birthday = ? WHERE user_id = ?";
-        jdbcTemplate.update(sql,
+        jdbcTemplate.update(UPDATE_USER,
                 newUser.getEmail(),
                 newUser.getLogin(),
                 newUser.getName(),
@@ -83,9 +96,8 @@ public class UserDbStorage implements UserStorage {
 
     @Override
     public User getUserById(Long id) {
-        String sql = "SELECT user_id, email, login, name, birthday FROM users WHERE user_id = ?";
         try {
-            return jdbcTemplate.queryForObject(sql, this::mapRowToUser, id);
+            return jdbcTemplate.queryForObject(SELECT_USER_BY_ID, this::mapRowToUser, id);
         } catch (EmptyResultDataAccessException e) {
             log.error("Пользователь с ID {} не зарегистрирован", id);
             throw new NotFoundException("Пользователь с ID " + id + " не найден");
@@ -97,8 +109,7 @@ public class UserDbStorage implements UserStorage {
         getUserById(userId);
         getUserById(friendId);
         // MERGE вместо INSERT — повторная заявка в друзья не должна падать с ошибкой дублирования PK.
-        String sql = "MERGE INTO friendships (user_id, friend_id, status_id) VALUES (?, ?, ?)";
-        jdbcTemplate.update(sql, userId, friendId, CONFIRMED_STATUS_ID);
+        jdbcTemplate.update(MERGE_FRIENDSHIP, userId, friendId);
         log.info("Пользователь {} добавил пользователя {} в друзья", userId, friendId);
     }
 
@@ -106,32 +117,24 @@ public class UserDbStorage implements UserStorage {
     public void removeFriend(Long userId, Long friendId) {
         getUserById(userId);
         getUserById(friendId);
-        String sql = "DELETE FROM friendships WHERE user_id = ? AND friend_id = ?";
-        jdbcTemplate.update(sql, userId, friendId);
+        jdbcTemplate.update(DELETE_FRIENDSHIP, userId, friendId);
         log.info("Пользователь {} удалил пользователя {} из друзей", userId, friendId);
     }
 
     @Override
     public List<User> getFriends(Long userId) {
         getUserById(userId);
-        String sql = "SELECT u.user_id, u.email, u.login, u.name, u.birthday " +
-                "FROM users u JOIN friendships f ON u.user_id = f.friend_id " +
-                "WHERE f.user_id = ?";
-        return jdbcTemplate.query(sql, this::mapRowToUser, userId);
+        return jdbcTemplate.query(SELECT_FRIENDS, this::mapRowToUser, userId);
     }
 
     @Override
     public List<User> getCommonFriends(Long userId, Long otherId) {
         getUserById(userId);
         getUserById(otherId);
-        String sql = "SELECT u.user_id, u.email, u.login, u.name, u.birthday " +
-                "FROM users u " +
-                "JOIN friendships f1 ON u.user_id = f1.friend_id AND f1.user_id = ? " +
-                "JOIN friendships f2 ON u.user_id = f2.friend_id AND f2.user_id = ?";
-        return jdbcTemplate.query(sql, this::mapRowToUser, userId, otherId);
+        return jdbcTemplate.query(SELECT_COMMON_FRIENDS, this::mapRowToUser, userId, otherId);
     }
 
-    private User mapRowToUser(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private User mapRowToUser(ResultSet rs, int rowNum) throws SQLException {
         User user = new User();
         user.setId(rs.getLong("user_id"));
         user.setEmail(rs.getString("email"));

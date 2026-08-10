@@ -13,6 +13,9 @@ import java.util.List;
 @Component
 public class GenreDbStorage implements GenreStorage {
 
+    private static final String SELECT_ALL_GENRES = "SELECT genre_id, name FROM genres ORDER BY genre_id";
+    private static final String SELECT_GENRE_BY_ID = "SELECT genre_id, name FROM genres WHERE genre_id = ?";
+
     private final JdbcTemplate jdbcTemplate;
 
     public GenreDbStorage(JdbcTemplate jdbcTemplate) {
@@ -21,15 +24,14 @@ public class GenreDbStorage implements GenreStorage {
 
     @Override
     public List<Genre> getAllGenres() {
-        String sql = "SELECT genre_id, name FROM genres ORDER BY genre_id";
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new Genre(rs.getInt("genre_id"), rs.getString("name")));
+        return jdbcTemplate.query(SELECT_ALL_GENRES,
+                (rs, rowNum) -> new Genre(rs.getInt("genre_id"), rs.getString("name")));
     }
 
     @Override
     public Genre getGenreById(Integer id) {
-        String sql = "SELECT genre_id, name FROM genres WHERE genre_id = ?";
         try {
-            return jdbcTemplate.queryForObject(sql,
+            return jdbcTemplate.queryForObject(SELECT_GENRE_BY_ID,
                     (rs, rowNum) -> new Genre(rs.getInt("genre_id"), rs.getString("name")), id);
         } catch (EmptyResultDataAccessException e) {
             log.error("Жанр с ID {} не найден", id);

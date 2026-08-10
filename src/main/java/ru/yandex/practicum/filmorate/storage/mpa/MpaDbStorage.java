@@ -13,6 +13,9 @@ import java.util.List;
 @Component
 public class MpaDbStorage implements MpaStorage {
 
+    private static final String SELECT_ALL_MPA = "SELECT mpa_id, name FROM mpa_ratings ORDER BY mpa_id";
+    private static final String SELECT_MPA_BY_ID = "SELECT mpa_id, name FROM mpa_ratings WHERE mpa_id = ?";
+
     private final JdbcTemplate jdbcTemplate;
 
     public MpaDbStorage(JdbcTemplate jdbcTemplate) {
@@ -21,15 +24,13 @@ public class MpaDbStorage implements MpaStorage {
 
     @Override
     public List<Mpa> getAllMpa() {
-        String sql = "SELECT mpa_id, name FROM mpa_ratings ORDER BY mpa_id";
-        return jdbcTemplate.query(sql, (rs, rowNum) -> new Mpa(rs.getInt("mpa_id"), rs.getString("name")));
+        return jdbcTemplate.query(SELECT_ALL_MPA, (rs, rowNum) -> new Mpa(rs.getInt("mpa_id"), rs.getString("name")));
     }
 
     @Override
     public Mpa getMpaById(Integer id) {
-        String sql = "SELECT mpa_id, name FROM mpa_ratings WHERE mpa_id = ?";
         try {
-            return jdbcTemplate.queryForObject(sql,
+            return jdbcTemplate.queryForObject(SELECT_MPA_BY_ID,
                     (rs, rowNum) -> new Mpa(rs.getInt("mpa_id"), rs.getString("name")), id);
         } catch (EmptyResultDataAccessException e) {
             log.error("Рейтинг MPA с ID {} не найден", id);

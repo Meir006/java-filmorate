@@ -12,7 +12,7 @@ Backend-приложение для сервиса Filmorate: пользоват
 - JUnit 5, Spring `@JdbcTest` для интеграционных тестов DAO
 
 ## Схема базы данных (ER-диаграмма)
-
+![ER-диаграмма](diagram.png)
 ```mermaid
 erDiagram
     users {
@@ -52,15 +52,9 @@ erDiagram
         bigint user_id PK,FK
     }
 
-    friendship_status {
-        int status_id PK
-        varchar name
-    }
-
     friendships {
         bigint user_id PK,FK
         bigint friend_id PK,FK
-        int status_id FK
     }
 
     films ||--o{ film_genres : ""
@@ -70,13 +64,12 @@ erDiagram
     users ||--o{ likes : ""
     users ||--o{ friendships : "user_id"
     users ||--o{ friendships : "friend_id"
-    friendship_status ||--o{ friendships : ""
 ```
 
 Дружба в `friendships` **односторонняя**: строка `(user_id, friend_id)` означает, что `user_id` добавил
-`friend_id` к себе в друзья. Обратная запись не создаётся автоматически. Таблица `friendship_status`
-хранит справочник статусов (сейчас используется единственный статус `CONFIRMED`, так как заявка
-применяется сразу) и оставлена расширяемой на будущее (например, для запроса дружбы `REQUESTED`).
+`friend_id` к себе в друзья. Обратная запись не создаётся автоматически. Сам факт наличия строки в таблице
+означает, что дружба существует — отдельного статуса не требуется, подтверждение дружбы в проекте не
+предусмотрено.
 
 ## Примеры SQL-запросов
 

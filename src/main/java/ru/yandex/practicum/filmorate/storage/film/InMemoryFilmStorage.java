@@ -8,15 +8,26 @@ import ru.yandex.practicum.filmorate.model.Film;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
+/**
+ * Хранилище фильмов в памяти. Оставлено для справки/тестов —
+ * основным хранилищем приложения является {@link FilmDbStorage}.
+ */
 @Slf4j
-@Component
+@Component("inMemoryFilmStorage")
 public class InMemoryFilmStorage implements FilmStorage {
 
     private static final LocalDate CINEMA_BIRTHDAY = LocalDate.of(1895, 12, 28);
     private final Map<Long, Film> films = new HashMap<>();
+    private final Map<Long, Set<Long>> likes = new HashMap<>();
     private long idCounter = 0;
 
     @Override
@@ -31,6 +42,7 @@ public class InMemoryFilmStorage implements FilmStorage {
         validateReleaseDate(film);
         film.setId(getNextId());
         films.put(film.getId(), film);
+        likes.put(film.getId(), new HashSet<>());
         log.info("Фильм «{}» успешно добавлен с ID {}", film.getName(), film.getId());
         return film;
     }
@@ -60,6 +72,28 @@ public class InMemoryFilmStorage implements FilmStorage {
             throw new NotFoundException("Фильм с ID " + id + " не найден");
         }
         return film;
+    }
+
+    @Override
+    public void addLike(Long filmId, Long userId) {
+        getFilmById(filmId);
+        likes.computeIfAbsent(filmId, k -> new HashSet<>()).add(userId);
+        log.info("Пользователь {} поставил лайк фильму {}", userId, filmId);
+    }
+
+    @Override
+    public void removeLike(Long filmId, Long userId) {
+        getFilmById(filmId);
+        likes.getOrDefault(filmId, Collections.emptySet()).remove(userId);
+        log.info("Пользователь {} удалил лайк с фильма {}", userId, filmId);
+    }
+
+    @Override
+    public List<Film> getPopular(int count) {
+        return films.values().stream()
+                .sorted(Comparator.comparingInt((Film f) -> likes.getOrDefault(f.getId(), Collections.emptySet()).size()).reversed())
+                .limit(count)
+                .collect(Collectors.toList());
     }
 
     private void validateReleaseDate(Film film) {
